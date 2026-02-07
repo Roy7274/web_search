@@ -205,13 +205,19 @@ class DeepSearch(BaseModel):
                 )
                 search_results = await self.search_engine.asearch(new_queries)
                 INFO(f"search result: {search_results}")
+                # Serialize for metadata (JSON-safe for streaming response)
+                search_results_payload = [
+                    r.model_dump(exclude_none=True, exclude_unset=True)
+                    if hasattr(r, "model_dump") else r
+                    for r in search_results
+                ]
                 # YIELD state with metadata
                 yield gen_metadata_chunk(
                     metadata={
                         'search_rounds': planned_rounds,
                         'search_state': 'searched',
                         'search_keywords': new_queries,
-                        'search_results': search_results
+                        'search_results': search_results_payload
                     }
                 )
                 for search_result in search_results:

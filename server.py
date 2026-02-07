@@ -21,8 +21,11 @@ from arkitect.core.component.llm.model import (
 from arkitect.launcher.local.serve import launch_serve
 from arkitect.launcher.vefaas import bot_wrapper
 from arkitect.telemetry.trace import task
+from volcenginesdkarkruntime import AsyncArk
 from search_engine.tavily import TavilySearchEngine
 from search_engine.volc_bot import VolcBotSearchEngine
+from search_engine.you import YouSearchEngine
+from search_engine.ask_echo import AskEchoSearchEngine
 from deep_search import DeepSearch, ExtraConfig
 
 from utils import get_last_message
@@ -30,8 +33,13 @@ from utils import get_last_message
 from config import (
     REASONING_MODEL,
     SEARCH_ENGINE,
+    ARK_API_KEY,
     TAVILY_API_KEY,
     SEARCH_BOT_ID,
+    YOU_API_KEY,
+    ASK_ECHO_API_KEY,
+    ASK_ECHO_AGENT_ID,
+    ASK_ECHO_BASE_URL,
 )
 
 logging.basicConfig(
@@ -46,13 +54,25 @@ async def main(
 ) -> AsyncIterable[Union[ArkChatCompletionChunk, ArkChatResponse]]:
     # using last_user_message as query
     last_user_message = get_last_message(request.messages, "user")
-    # set search_engine
-    search_engine = VolcBotSearchEngine(bot_id=SEARCH_BOT_ID)
-    if "tavily" == SEARCH_ENGINE:
-        search_engine = TavilySearchEngine(api_key=TAVILY_API_KEY)
-
-    # settings from request
+    # settings from request (metadata may contain search_engine choice)
     metadata = request.metadata or {}
+    selected_engine = metadata.get("search_engine", SEARCH_ENGINE)
+    # 前端显示名别名映射为实际引擎 id（如 BytePlusAskEchoSearchAgent -> ask_echo）
+    if selected_engine == "BytePlusAskEchoSearchAgent":
+        selected_engine = "ask_echo"
+    # set search_engine dynamically
+    if selected_engine == "tavily":
+        search_engine = TavilySearchEngine(api_key=TAVILY_API_KEY)
+    elif selected_engine == "you":
+        search_engine = YouSearchEngine(api_key=YOU_API_KEY)
+    elif selected_engine == "ask_echo":
+        search_engine = AskEchoSearchEngine(
+            api_key=ASK_ECHO_API_KEY,
+            agent_id=ASK_ECHO_AGENT_ID,
+            base_url=ASK_ECHO_BASE_URL or None,
+        )
+    else:
+        search_engine = VolcBotSearchEngine(bot_id=SEARCH_BOT_ID)
     max_search_words = metadata.get('max_search_words', 5)
     max_planning_rounds = metadata.get('max_planning_rounds', 5)
 
@@ -89,9 +109,18 @@ if __name__ == "__main__":
     port = os.getenv("_FAAS_RUNTIME_PORT")
     launch_serve(
         package_path="server",
-        port=int(port) if port else 8888,
+        port=int(port) if port else 7859,
         health_check_path="/v1/ping",
         endpoint_path="/api/v3/bots/chat/completions",
         trace_on=False,
-        clients={},
+        clients={
+            "ark": (
+                AsyncArk,
+                {
+                    "region": "ap-southeast-1",
+                    "base_url": "https://ark.ap-southeast.volces.com/api/v3",
+                    "api_key": ARK_API_KEY,
+                },
+            ),
+        },
     )

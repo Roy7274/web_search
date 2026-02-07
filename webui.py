@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from openai import OpenAI
 from typing import Any, Generator
 
-from config import (ARK_API_KEY, API_ADDR, API_BOT_ID)
+from config import ARK_API_KEY, API_ADDR, API_BOT_ID, SEARCH_ENGINE
 
 client = OpenAI(base_url=API_ADDR, api_key=ARK_API_KEY)
 
@@ -65,6 +65,7 @@ def update_search_panel():
 
 def stream_chat(message: str,
                 history: list,
+                search_engine: str,
                 ) -> Generator[list[tuple[str, str]], Any, None]:
     global search_records
     history.clear()
@@ -93,6 +94,7 @@ def stream_chat(message: str,
                 }
             ],
             stream=True,
+            extra_body={"metadata": {"search_engine": search_engine}},
     ):
         # round vars
         reasoning_content = rsp.choices[0].delta.reasoning_content if hasattr(rsp.choices[0].delta,
@@ -160,8 +162,21 @@ if __name__ == "__main__":
             with gr.Column(scale=2, elem_classes='chat-col'):
                 gr.Markdown("<center><h2>🤖 Deep Research</h2></center>")
                 gr.Markdown("> **please use single round chat**")
+                # 选项 (显示名, 实际传给后端的值)。volc_bot 暂时隐藏；ask_echo 显示为 BytePlusAskEchoSearchAgent
+                _engine_choices = [
+                    ("tavily", "tavily"),
+                    ("you", "you"),
+                    ("BytePlusAskEchoSearchAgent", "ask_echo"),
+                ]
+                _default_engine = SEARCH_ENGINE if SEARCH_ENGINE != "volc_bot" else "ask_echo"
+                search_engine_dropdown = gr.Dropdown(
+                    choices=_engine_choices,
+                    value=_default_engine,
+                    label="搜索引擎",
+                )
                 gr.ChatInterface(
                     fn=stream_chat,
+                    additional_inputs=[search_engine_dropdown],
                     additional_outputs=[references],
                     type="messages",
                     fill_height=True,

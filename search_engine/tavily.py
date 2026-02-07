@@ -14,7 +14,7 @@ from typing import Literal, Optional, List
 
 from tavily import TavilyClient
 
-from .search_engine import SearchEngine, SearchResult
+from .search_engine import SearchEngine, SearchResult, SearchReference
 
 import asyncio
 
@@ -63,9 +63,20 @@ class TavilySearchEngine(SearchEngine, ABC):
             include_domains=self._include_domains,
             exclude_domains=self._exclude_domains,
         )
+        results = response.get("results", [])
+        search_references = [
+            SearchReference(
+                title=r.get("title"),
+                url=r.get("url"),
+                content=r.get("content"),
+                site=None,
+            )
+            for r in results
+        ]
         return SearchResult(
             query=query,
             summary_content=self._format_result(response),
+            search_references=search_references,
         )
 
     @classmethod

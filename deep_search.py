@@ -154,6 +154,7 @@ class DeepSearch(BaseModel):
             references: ResultsSummary
     ) -> AsyncIterable[ArkChatCompletionChunk]:
 
+        # 最多执行 max_planning_rounds 轮；若某轮 check_query 返回“无需搜索”则提前结束
         planned_rounds = 1
         while planned_rounds <= self.extra_config.max_planning_rounds:
             planned_rounds += 1
@@ -258,6 +259,10 @@ class DeepSearch(BaseModel):
 
     @classmethod
     def check_query(cls, output: str) -> Optional[List[str]]:
-        if '无需' in output:
+        """若模型认为当前资料已足够则返回 None，否则返回本轮的搜索关键词列表。"""
+        text = (output or "").strip()
+        # 与 prompt 一致：中文「无需」或英文 "No need to search" 均表示无需继续搜索
+        if "无需" in text or "no need to search" in text.lower():
             return None
-        return [o.strip() for o in output.split(';')]
+        keywords = [o.strip() for o in text.split(";") if o.strip()]
+        return keywords if keywords else None
